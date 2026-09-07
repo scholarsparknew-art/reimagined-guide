@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>***** Resilience Matrix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0A0A0A;
+      --card-bg: rgba(18, 18, 18, 0.85);
+      --card-border: rgba(255, 176, 0, 0.2);
+      --text-main: #EDEDED;
+      --text-muted: #888888;
+      --amber: #FFB000;
+      --amber-glow: rgba(255, 176, 0, 0.35);
+      --amber-dim: rgba(255, 176, 0, 0.08);
+      --font: 'Space Grotesk', -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font);
+      overflow: hidden;
+      position: fixed; /* Prevents mobile rubber-banding/elastic bounce */
+    }
+
+    #bg-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 440px;
+      /* Handles mobile dynamic viewport height (dvh) with safe area notch spacing */
+      height: 100vh;
+      height: 100dvh; 
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      margin: 0 auto;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 4px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: clamp(0.95rem, 4vw, 1.1rem);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--amber);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--amber);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .audio-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .audio-btn.active {
+      color: var(--amber);
+      border-color: var(--amber);
+      box-shadow: 0 0 12px var(--amber-glow);
+    }
+
+    .attempts-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: var(--amber-dim);
+      border: 1px solid var(--card-border);
+      color: var(--amber);
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      margin: 12px 0;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber);
+      transition: width 0.3s ease;
+    }
+
+    .view-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .screen {
+      position: absolute;
+      width: 100%;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .screen.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+      position: relative;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: clamp(16px, 5vw, 24px);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .q-meta {
+      font-size: 0.75rem;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .q-text {
+      font-size: clamp(1.05rem, 4.5vw, 1.25rem);
+      font-weight: 600;
+      line-height: 1.35;
+      margin-bottom: 16px;
+    }
+
+    .options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .option-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: var(--text-main);
+      font-family: var(--font);
+      font-size: clamp(0.85rem, 3.8vw, 0.95rem);
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 52px; /* Touch target minimum standard */
+    }
+
+    .option-btn:active {
+      transform: scale(0.98);
+      background: var(--amber-dim);
+      border-color: var(--amber);
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .metric-val {
+      font-size: clamp(1.5rem, 6vw, 1.8rem);
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .metric-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .primary-btn {
+      background: var(--amber);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-family: var(--font);
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 0 20px var(--amber-glow);
+      min-height: 52px;
+    }
+
+    .lock-timer {
+      font-family: monospace;
+      font-size: 1.2rem;
+      color: var(--amber);
+      letter-spacing: 2px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="bg-canvas"></canvas>
+
+  <div id="app">
+    <header>
+      <div class="brand">
+        <div class="brand-dot"></div>
+        <span>DAILY MATRIX</span>
+      </div>
+      <div class="controls">
+        <button class="audio-btn" id="audioToggle" aria-label="Toggle Audio">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        </button>
+        <div class="attempts-badge" id="attemptsDisplay">******* 1/5</div>
+      </div>
+    </header>
+
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+
+    <div class="view-container">
+      <div class="screen active" id="quizScreen">
+        <div class="card">
+          <div class="q-meta" id="qMeta">QUESTION 1 / 5</div>
+          <div class="q-text" id="qText">Loading scenario...</div>
+          <div class="options-grid" id="optionsContainer"></div>
+        </div>
+      </div>
+
+      <div class="screen" id="dashboardScreen">
+        <div class="card" style="text-align: center;">
+          <div class="q-meta">DAILY RESULTS</div>
+          <div class="q-text" style="margin-bottom: 4px;" id="dashTitle">Resilience Summary</div>
+          <p style="font-size: 0.8rem; color: var(--text-muted);" id="dashSubtitle">Your daily ******** ******* recorded.</p>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-val" id="scoreResilience">0%</div>
+            <div class="metric-label">Resilience</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-val" id="scoreBoundary">0%</div>
+            <div class="metric-label">Boundaries</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-val" id="scoreFriction">0%</div>
+            <div class="metric-label">Friction Index</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-val" id="scoreEquanimity">0%</div>
+            <div class="metric-label">Equanimity</div>
+          </div>
+        </div>
+
+        <button class="primary-btn" id="actionBtn" onclick="handleNextWave()">REPEAT TEST</button>
+        <div id="lockContainer" style="display: none; text-align: center;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Next ***** Refresh In</div>
+          <div class="lock-timer" id="lockTimer">24:00:00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const QuestionBank = [
+      {
+        text: "A high-priority request comes in during designated personal recovery hours. You:",
+        opts: [
+          { t: "Set a clear boundary and decline until morning.", r: 10, b: 10, f: 8, e: 8 },
+          { t: "Accept reluctantly, sacrificing sleep and focus.", r: 3, b: 1, f: 4, e: 3 },
+          { t: "Negotiate a realistic timeline for tomorrow.", r: 9, b: 8, f: 9, e: 9 },
+          { t: "Ignore the message completely with zero response.", r: 4, b: 5, f: 2, e: 3 }
+        ]
+      },
+      {
+        text: "A coworker attempts to project blame onto you during an active issue. You:",
+        opts: [
+          { t: "Present clear facts neutrally without getting emotional.", r: 10, b: 9, f: 9, e: 10 },
+          { t: "Absorb responsibility to maintain peace.", r: 2, b: 1, f: 2, e: 4 },
+          { t: "Argue aggressively to defend your standing.", r: 5, b: 4, f: 10, e: 2 },
+          { t: "State your role limits and pivot to problem-solving.", r: 9, b: 10, f: 7, e: 8 }
+        ]
+      },
+      {
+        text: "An unforeseen friction point completely alters your daily schedule. You:",
+        opts: [
+          { t: "Adapt instantly and isolate core non-negotiable tasks.", r: 10, b: 8, f: 9, e: 9 },
+          { t: "Force original plans, causing severe frustration.", r: 4, b: 3, f: 7, e: 2 },
+          { t: "Abandon effort and write off the day.", r: 1, b: 0, f: 1, e: 1 },
+          { t: "Pause, recalibrate calmly, and continue with a revised plan.", r: 9, b: 7, f: 6, e: 10 }
+        ]
+      },
+      {
+        text: "Someone requests a compromise on your non-negotiable standard. You:",
+        opts: [
+          { t: "Hold firm on core principles despite social discomfort.", r: 10, b: 10, f: 10, e: 8 },
+          { t: "Capitulate to avoid immediate conflict.", r: 2, b: 1, f: 2, e: 3 },
+          { t: "Define a middle ground without sacrificing values.", r: 8, b: 8, f: 7, e: 8 },
+          { t: "Delay deciding to escape awkwardness.", r: 3, b: 2, f: 1, e: 4 }
+        ]
+      },
+      {
+        text: "You receive hostile, unsolicited feedback. You:",
+        opts: [
+          { t: "Extract actionable points and ignore emotional noise.", r: 10, b: 9, f: 8, e: 10 },
+          { t: "Internalize emotional noise and react defensively.", r: 2, b: 1, f: 7, e: 2 },
+          { t: "Terminate engagement immediately.", r: 7, b: 8, f: 4, e: 6 },
+          { t: "Reframe criticism constructively while setting boundaries.", r: 9, b: 9, f: 7, e: 9 }
+        ]
+      },
+      {
+        text: "A low-impact urgent task threatens your long-term goal focus. You:",
+        opts: [
+          { t: "Delegate or decline it to protect priority focus.", r: 10, b: 10, f: 8, e: 8 },
+          { t: "Drop your main focus to handle the low-impact task.", r: 3, b: 2, f: 5, e: 3 },
+          { t: "Schedule it for a lower-energy time window.", r: 8, b: 7, f: 6, e: 8 },
+          { t: "Context-switch rapidly, exhausting your focus.", r: 2, b: 1, f: 8, e: 2 }
+        ]
+      }
+    ];
+
+    const STORAGE_KEY = 'RESILIENCE_MATRIX_DATA_V3';
+    let state = {
+      lastReset: Date.now(),
+      attemptsToday: 0,
+      currentQuestion: 0,
+      answers: [],
+      questions: []
+    };
+
+    function generate5Questions() {
+      const shuffled = [...QuestionBank].sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, 5).map(q => ({
+        text: q.text,
+        opts: [...q.opts].sort(() => 0.5 - Math.random())
+      }));
+    }
+
+    function loadState() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        state = JSON.parse(saved);
+        const dayInMs = 24 * 60 * 60 * 1000;
+        if (Date.now() - state.lastReset > dayInMs) {
+          state.lastReset = Date.now();
+          state.attemptsToday = 0;
+          state.currentQuestion = 0;
+          state.answers = [];
+          state.questions = generate5Questions();
+        }
+      } else {
+        state.questions = generate5Questions();
+      }
+      if (!state.questions || state.questions.length === 0) {
+        state.questions = generate5Questions();
+      }
+      saveState();
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function render() {
+      document.getElementById('attemptsDisplay').innerText = `ATTEMPT ${Math.min(state.attemptsToday + 1, 5)}/5`;
+
+      if (state.attemptsToday >= 5) {
+        showResults(true);
+        return;
+      }
+
+      if (state.currentQuestion >= 5) {
+        showResults(false);
+        return;
+      }
+
+      const q = state.questions[state.currentQuestion];
+      document.getElementById('progressBar').style.width = `${((state.currentQuestion) / 5) * 100}%`;
+      document.getElementById('qMeta').innerText = `QUESTION ${state.currentQuestion + 1} / 5`;
+      document.getElementById('qText').innerText = q.text;
+
+      const container = document.getElementById('optionsContainer');
+      container.innerHTML = '';
+
+      q.opts.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.innerHTML = `<span>${opt.t}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0; margin-left:8px;"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+        
+        // Touch optimized click listener to prevent double-tap issues on mobile
+        btn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          selectOption(opt);
+        }, { passive: false });
+
+        btn.onclick = () => selectOption(opt);
+        container.appendChild(btn);
+      });
+
+      switchScreen('quizScreen');
+    }
+
+    function selectOption(opt) {
+      state.answers.push(opt);
+      state.currentQuestion++;
+      saveState();
+      render();
+    }
+
+    function showResults(isLocked) {
+      document.getElementById('progressBar').style.width = '100%';
+      
+      const total = state.answers.length * 10 || 1;
+      const scores = state.answers.reduce((acc, curr) => ({
+        r: acc.r + curr.r, b: acc.b + curr.b, f: acc.f + curr.f, e: acc.e + curr.e
+      }), { r: 0, b: 0, f: 0, e: 0 });
+
+      document.getElementById('scoreResilience').innerText = `${Math.round((scores.r / total) * 100)}%`;
+      document.getElementById('scoreBoundary').innerText = `${Math.round((scores.b / total) * 100)}%`;
+      document.getElementById('scoreFriction').innerText = `${Math.round((scores.f / total) * 100)}%`;
+      document.getElementById('scoreEquanimity').innerText = `${Math.round((scores.e / total) * 100)}%`;
+
+      const actionBtn = document.getElementById('actionBtn');
+      const lockContainer = document.getElementById('lockContainer');
+
+      if (isLocked) {
+        actionBtn.style.display = 'none';
+        lockContainer.style.display = 'block';
+        document.getElementById('dashTitle').innerText = 'Daily Limit Reached';
+        document.getElementById('dashSubtitle').innerText = '5 tests completed. New questions unlock tomorrow.';
+      } else {
+        actionBtn.style.display = 'block';
+        lockContainer.style.display = 'none';
+        actionBtn.innerText = `REPEAT TEST (${5 - (state.attemptsToday + 1)} LEFT)`;
+      }
+
+      switchScreen('dashboardScreen');
+    }
+
+    function handleNextWave() {
+      state.attemptsToday++;
+      if (state.attemptsToday >= 5) {
+        saveState();
+        showResults(true);
+      } else {
+        state.currentQuestion = 0;
+        state.answers = [];
+        state.questions = generate5Questions();
+        saveState();
+        render();
+      }
+    }
+
+    function switchScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    setInterval(() => {
+      const remaining = (state.lastReset + 24 * 60 * 60 * 1000) - Date.now();
+      if (remaining <= 0) {
+        state.lastReset = Date.now();
+        state.attemptsToday = 0;
+        state.currentQuestion = 0;
+        state.answers = [];
+        state.questions = generate5Questions();
+        saveState();
+        render();
+      } else {
+        const hrs = String(Math.floor(remaining / (1000 * 60 * 60))).padStart(2, '0');
+        const mins = String(Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+        const secs = String(Math.floor((remaining % (1000 * 60)) / 1000)).padStart(2, '0');
+        document.getElementById('lockTimer').innerText = `${hrs}:${mins}:${secs}`;
+      }
+    }, 1000);
+
+    /* Mobile Canvas Renderer */
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height, particles = [];
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = canvas.width = window.innerWidth * dpr;
+      height = canvas.height = window.innerHeight * dpr;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const pCount = Math.min(Math.floor(window.innerWidth / 12), 25);
+    for (let i = 0; i < pCount; i++) {
+      particles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        r: Math.random() * 1.5 + 0.5
+      });
+    }
+
+    function anim() {
+      ctx.fillStyle = '#0A0A0A';
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > window.innerWidth) p.vx *= -1;
+        if (p.y < 0 || p.y > window.innerHeight) p.vy *= -1;
+        
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 176, 0, 0.3)';
+        ctx.fill();
+      });
+
+      requestAnimationFrame(anim);
+    }
+    anim();
+
+    /* Web Audio Engine */
+    let audioCtx, isPlaying = false;
+    const audioBtn = document.getElementById('audioToggle');
+
+    function toggleAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(55, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+      }
+      
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      
+      if (isPlaying) {
+        audioCtx.suspend();
+        audioBtn.classList.remove('active');
+      } else {
+        audioBtn.classList.add('active');
+      }
+      isPlaying = !isPlaying;
+    }
+
+    audioBtn.onclick = toggleAudio;
+
+    loadState();
+    render();
+  </script>
+
+<div style="color: red">Word to HTML trial - please <a href="https://wordtohtml.net/site/payment">Go PRO</a> to get whole HTML.</div>
+</body>
+</html>
